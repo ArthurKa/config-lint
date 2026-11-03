@@ -1,6 +1,6 @@
 {
   "name": "config-lint",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Lint and fix package.json and Docker Compose files in the active editor.",
   "scripts": {

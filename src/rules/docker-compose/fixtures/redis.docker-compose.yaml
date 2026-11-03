@@ -1,0 +1,38 @@
+services:
+  redis: &redis
+    networks:
+      - bullmq-test
+    profiles:
+      - prod
+    image: redis:7.4.3-alpine
+    container_name: bullmq-test_redis
+    restart: unless-stopped
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASS:?}
+      CONTAINERS_HEALTHCHECK_MARKER_FILE: ${CONTAINERS_HEALTHCHECK_MARKER_FILE:?}
+    healthcheck:
+      test: >-
+        /bin/sh /app/healthcheck.sh
+        --start-period 5
+        --check-interval 20
+        --start-check-interval 1
+        --retry-check-interval 2
+        --retry-attempts 3
+        --check-timeout 3
+        --check-command 'redis-cli ping | grep -qx PONG'
+      interval: 100ms
+      timeout: 1h
+      retries: 1
+      start_period: 5s
+      start_interval: 100ms # Warn: the default value seems to be 5s instead of interval value
+    expose:
+      - 6379
+    volumes:
+      - ./healthcheck.sh:/app/healthcheck.sh:ro
+      - ./redis-data:/data
+    command: >-
+      /bin/sh -ec 'date +%s > "${CONTAINERS_HEALTHCHECK_MARKER_FILE:?}";
+      exec /usr/local/bin/docker-entrypoint.sh "$$@"'
+      redis-server
+      --appendonly yes
+      --requirepass "${REDIS_PASS:?}"

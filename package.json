@@ -1,0 +1,71 @@
+{
+  "name": "config-lint",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Lint and fix package.json and Docker Compose files in the active editor.",
+  "scripts": {
+    "prune": "rm -rf node_modules && npm run prune:sub",
+    "prune:sub": "rm -rf packages/*/node_modules",
+    "build": "npm run start-checks && esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --outfile=dist/extension.cjs --sourcemap --color=false --main-fields=module,main",
+    "dev": "npm run start-checks && npm run build -- --watch",
+    "ts": "npm run start-checks && tsc --noEmit",
+    "package": "npm run start-checks && vsce package --no-dependencies",
+    "vscode:prepublish": "npm run start-checks && npm run ts && npm test && npm run build",
+    "test": "npm run start-checks && esbuild scripts/test.ts --bundle --platform=node --format=esm --external:esbuild --outfile=dist/test.mjs && node dist/test.mjs",
+    "test:int": "sh scripts/test-integration.sh",
+    "test:int:headed": "npm run start-checks && npm run build && esbuild tests/integration.ts tests/run-integration.ts --bundle --platform=node --format=cjs --external:vscode --outdir=dist/tests --out-extension:.js=.cjs && node dist/tests/run-integration.cjs",
+    "start-checks": "node helpers/start-checks.cjs && node helpers/check-package-versions.cjs && node helpers/modify-node-modules/index.cjs --check",
+    "setup:dependencies": "node helpers/modify-node-modules/index.cjs && npm run start-checks",
+    "prepare": "npm run setup:dependencies && node -e \"if(require('fs').existsSync('.git')) { try { require('husky').install(); } catch(e) { if(e.code !== 'MODULE_NOT_FOUND') throw e; } }\""
+  },
+  "devDependencies": {
+    "@arthurka/eslint": "4.9.0",
+    "@arthurka/ts-reset": "1.13.1",
+    "@total-typescript/ts-reset": "0.5.1",
+    "@tsconfig/strictest": "2.0.8",
+    "@types/node": "22.19.21",
+    "@types/semver": "7.8.0",
+    "@types/vscode": "1.96.0",
+    "@vscode/vsce": "4.1.0",
+    "esbuild": "0.28.2",
+    "eslint": "10.6.0",
+    "eslint-import-resolver-typescript": "3.10.1",
+    "husky": "8.0.3",
+    "ignore": "7.0.14",
+    "jsonc-parser": "3.3.1",
+    "semver": "7.8.5",
+    "typescript": "5.8.3",
+    "yaml": "2.9.1"
+  },
+  "type": "module",
+  "main": "./dist/extension.cjs",
+  "displayName": "Config Lint",
+  "publisher": "arthurka",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Linters"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "configLint.fixAll",
+        "title": "Fix all autofixable problems",
+        "category": "Config Lint"
+      }
+    ]
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ArthurKa/config-lint.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ArthurKa/config-lint/issues"
+  },
+  "homepage": "https://github.com/ArthurKa/config-lint#readme"
+}

@@ -1,0 +1,35 @@
+{
+  "extends": "@tsconfig/strictest/tsconfig.json",
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "resolvePackageJsonExports": false,
+    "noUncheckedSideEffectImports": false,
+    "lib": [
+      "es2022"
+    ],
+    "noPropertyAccessFromIndexSignature": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "resolveJsonModule": true,
+    "allowUnreachableCode": true,
+    "importsNotUsedAsValues": "remove",
+    "noImplicitOverride": false,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "noImplicitReturns": false,
+    "exactOptionalPropertyTypes": false,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "incremental": true,
+    "types": [
+      "@types/node",
+      "@total-typescript/ts-reset",
+      "@arthurka/ts-reset",
+    ],
+  },
+  "ts-node": {
+    "files": true,
+  },
+}

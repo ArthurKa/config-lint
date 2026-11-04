@@ -4,7 +4,7 @@
 import assert from 'assert/strict';
 import { readFile } from 'fs/promises';
 import { test } from 'node:test';
-import { isMap, isNode, parseDocument } from 'yaml';
+import { isMap, isNode, isSeq, parseDocument } from 'yaml';
 import { analyze, fix } from '..';
 import { check, dockerCompose, values } from '../../utils/test-helpers';
 
@@ -92,10 +92,99 @@ void test('quote removal across Docker Compose preserves types, escaping, commen
   assert.ok(result.includes('OLD_BOOL: "no"'));
   assert.ok(result.includes('FLOW: ["a,b", abc]'));
 });
-void test('alias references, merged maps and variable expressions stay skipped', () => {
+void test('local ports in merged services report and fix without changing healthchecks', () => {
+  const input = `x-mongo: &mongo
+  image: mongo:8
+x-mongo-healthcheck: &mongo-healthcheck
+  interval: 10s
+services:
+  mongo-dev:
+    <<: *mongo
+    profiles:
+      - dev
+    healthcheck:
+      <<: *mongo-healthcheck
+      test: >
+        mongosh --port 27017 --quiet --eval "
+          let res;
+          try {
+            res = rs.status();
+          } catch(e) {
+            rs.initiate({
+              _id: 'rs0',
+              members: [{ _id: 0, host: 'localhost:27017' }],
+            });
+            res = rs.status();
+          }
+
+          if(res.ok !== 1) {
+            exit(1);
+          }
+        "
+    ports:
+      - 127.0.0.1:27017:27017
+`;
+  const issues = analyze(input, 'docker-compose');
+  assert.deepEqual(issues.map(e => e.rule), ['docker-compose/explicit-port-protocol', 'docker-compose/key-order']);
+  assert.equal(input.slice(issues[0]?.start, issues[0]?.end), '7');
+  const result = check(input);
+  assert.ok(result.includes('127.0.0.1:27017:27017/tcp'));
+  assert.equal(parseDocument(result).getIn(['services', 'mongo-dev', 'healthcheck', 'test']), parseDocument(input).getIn(['services', 'mongo-dev', 'healthcheck', 'test']));
+  assert.deepEqual(analyze(result, 'docker-compose'), []);
+});
+void test('merged services validate local short and long ports and volumes', () => {
+  const input = `x-base: &base
+  ports: [90:90]
+  volumes: [./inherited:/inherited]
+services:
+  app:
+    <<: *base
+    command: start
+    image: nginx
+    ports:
+      - 80:80
+      - {target: 81}
+    volumes:
+      - ./data:/data
+      - {type: volume, target: /other}
+  inherited:
+    <<: *base
+`;
+  assert.deepEqual(analyze(input, 'docker-compose').map(e => e.rule).toSorted(), [
+    'docker-compose/explicit-port-host',
+    'docker-compose/explicit-port-host',
+    'docker-compose/explicit-port-protocol',
+    'docker-compose/explicit-port-protocol',
+    'docker-compose/explicit-volume-mode',
+    'docker-compose/explicit-volume-mode',
+    'docker-compose/explicit-port-host',
+    'docker-compose/explicit-port-protocol',
+    'docker-compose/explicit-volume-mode',
+    'docker-compose/key-order',
+    'docker-compose/pinned-image',
+  ].toSorted());
+  const result = check(input);
+  const document = parseDocument(result);
+  const ports = document.getIn(['services', 'app', 'ports']);
+  const volumes = document.getIn(['services', 'app', 'volumes']);
+  assert.ok(isSeq(ports));
+  assert.ok(isSeq(volumes));
+  assert.deepEqual(ports.toJSON(), [
+    '127.0.0.1:80:80/tcp',
+    { protocol: 'tcp', host_ip: '127.0.0.1', target: 81 },
+  ]);
+  assert.deepEqual(volumes.toJSON(), [
+    './data:/data:ro',
+    { read_only: true, type: 'volume', target: '/other' },
+  ]);
+  assert.ok(result.startsWith('x-base: &base\n  ports: [127.0.0.1:90:90/tcp]\n  volumes: [./inherited:/inherited:ro]\n'));
+  assert.deepEqual(analyze(result, 'docker-compose').map(e => e.rule), ['docker-compose/pinned-image']);
+});
+void test('alias references and inherited fields are checked while variable expressions stay skipped', () => {
   const input = 'x-ports: &ports [80:80]\nx-base: &base {image: node}\nservices:\n  app:\n    <<: *base\n    ports: *ports\n  other:\n    ports:\n      - "${PORT_MAPPING}"\n      - {target: 80, host_ip: "${HOST}"}\n    volumes:\n      - "${SOURCE}:/data"\n';
-  assert.equal(check(input), input);
-  assert.equal(analyze(input, 'docker-compose').length, 0);
+  const result = check(input);
+  assert.equal(result, input.replace('[80:80]', '[127.0.0.1:80:80/tcp]'));
+  assert.deepEqual(analyze(result, 'docker-compose').map(e => e.rule), ['docker-compose/pinned-image']);
 });
 void test('ordering cannot create forward alias references', () => {
   const input = dockerCompose('    command: &value hi\n    image: *value\n');
@@ -129,7 +218,8 @@ void test('Docker Compose ordering reports the first affected key in block and f
     'services: {app: {networks: [], depends_on: [], profiles: [], image: node, build: ., platform: linux/amd64}}\n',
   ]) {
     const issues = analyze(input, 'docker-compose').filter(e => e.rule === 'docker-compose/key-order');
-    assert.deepEqual(issues.map(e => input.slice(e.start, e.end)), ['depends_on']);
+    assert.deepEqual(issues.map(e => input.slice(e.start, e.end)), ['d']);
+    assert.equal(issues[0]?.start, input.indexOf('depends_on'));
     assert.equal(analyze(check(input), 'docker-compose').length, 0);
   }
 });
@@ -275,10 +365,10 @@ void test('type-changing quote removal is withheld within shared definitions', (
   const input = dockerCompose('    image: &image "node:22"\n    command: [*image]\n');
   assert.equal(check(input), input.replace('"node:22"', 'node:22'));
 });
-void test('anchors do not enable alias expansion, template inference, or tagged/merged mappings', () => {
+void test('referenced templates are checked while tagged mappings stay untouched', () => {
   const input = 'x-template: &template\n  volumes: [./app:/app]\nservices:\n  app: &app\n    <<: *template\n  other: *app\n  tagged: !custom\n    volumes: [./app:/app]\n';
-  assert.equal(check(input), input);
-  assert.equal(analyze(input, 'docker-compose').length, 0);
+  assert.equal(check(input), input.replace('volumes: [./app:/app]', 'volumes: [./app:/app:ro]'));
+  assert.equal(analyze(check(input), 'docker-compose').length, 0);
 });
 
 void test('numeric expose quotes are removed in anchored services and compatible aliases', () => {
@@ -290,12 +380,47 @@ void test('numeric expose quotes are removed in anchored services and compatible
   ]) {
     const issues = analyze(input, 'docker-compose').filter(e => e.rule === 'docker-compose/no-unnecessary-quotes');
     assert.equal(issues.length, 1);
-    assert.equal(input.slice(issues[0]?.start, issues[0]?.end), '"3003"');
+    assert.equal(input.slice(issues[0]?.start, issues[0]?.end), '"');
     assert.equal(check(input), input.replace('"3003"', '3003'));
   }
 });
 
-void test('missing volume modes and port hosts report their exact insertion positions', () => {
+void test('short port reports highlight missing components and invalid hosts precisely', () => {
+  for(const quote of ['', '"', "'"]) {
+    for(const [value, hostText, protocolText] of [
+      ['3000:80', '3', '0'],
+      ['80', '8', '0'],
+      ['bad-host:8080:80', 'bad-host', '0'],
+      ['bad-host:8080:80/tcp', 'bad-host', undefined],
+      ['3000:80/invalid', '3', `${quote}3000:80/invalid${quote}`],
+    ] as const) {
+      const input = dockerCompose(`    ports:\n      - &port ${quote}${value}${quote} # port\n`);
+      const issues = analyze(input, 'docker-compose');
+      const host = issues.find(e => e.rule === 'docker-compose/explicit-port-host');
+      const protocol = issues.find(e => e.rule === 'docker-compose/explicit-port-protocol');
+      assert.ok(host);
+      assert.equal(input.slice(host.start, host.end), hostText);
+      if(protocolText === undefined) {
+        assert.equal(protocol, undefined);
+      } else {
+        assert.ok(protocol);
+        assert.equal(input.slice(protocol.start, protocol.end), protocolText);
+      }
+    }
+  }
+});
+
+void test('long port invalid values retain their full report ranges', () => {
+  const input = dockerCompose('    ports:\n      - target: 80\n        protocol: invalid\n        host_ip: bad-host\n');
+  const issues = analyze(input, 'docker-compose');
+  for(const [rule, expected] of [['explicit-port-protocol', 'invalid'], ['explicit-port-host', 'bad-host']] as const) {
+    const issue = issues.find(e => e.rule === `docker-compose/${rule}`);
+    assert.ok(issue);
+    assert.equal(input.slice(issue.start, issue.end), expected);
+  }
+});
+
+void test('missing volume modes report insertion positions and port hosts highlight their first character', () => {
   for(const quote of ['', '"', "'"]) {
     const input = dockerCompose(`    ports:\n      - &port ${quote}3000:3000/tcp${quote} # port\n    volumes:\n      - &mount ${quote}./app:/app${quote} # mount\n`);
     const issues = analyze(input, 'docker-compose');
@@ -303,7 +428,7 @@ void test('missing volume modes and port hosts report their exact insertion posi
     const mode = issues.find(e => e.rule === 'docker-compose/explicit-volume-mode');
     assert.ok(host?.edit && mode?.edit);
     assert.equal(host.start, input.indexOf('3000:3000'));
-    assert.equal(host.end, host.start);
+    assert.equal(host.end, host.start + 1);
     assert.equal(mode.start, input.indexOf('./app:/app') + './app:/app'.length);
     assert.equal(mode.end, mode.start);
     assert.ok(check(input).includes('127.0.0.1:3000:3000/tcp'));

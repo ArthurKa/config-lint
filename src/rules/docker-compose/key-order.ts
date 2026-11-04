@@ -1,6 +1,7 @@
 import { isNode, isScalar, type YAMLMap } from 'yaml';
 import { dockerComposeBottom, dockerComposeTop } from '../../constants';
 import type { Edit, Issue } from '../../types';
+import { mergePair } from '../../utils/docker-compose/resolution';
 import { equivalent, issueAt, scalarKey } from '../../utils/docker-compose/yaml';
 import { firstOrderingChange, rank } from '../../utils/ordering';
 import { apply, eolOf, lineStart } from '../../utils/text';
@@ -21,9 +22,19 @@ const commentStart = (text: string, offset: number): number => {
 };
 export const orderIssue = (text: string, mapping: YAMLMap): Issue[] => {
   const pairs = mapping.items;
-  const sorted = pairs.toSorted((a, b) => (
+  const movable = pairs.filter(e => !mergePair(e.key)).toSorted((a, b) => (
     rank(scalarKey(a.key), dockerComposeTop, dockerComposeBottom) - rank(scalarKey(b.key), dockerComposeTop, dockerComposeBottom)
   ));
+  let index = 0;
+  const sorted = pairs.map(e => {
+    if(mergePair(e.key)) {
+      return e;
+    }
+    const pair = movable[index] ?? e;
+    index++;
+
+    return pair;
+  });
   if(sorted.every((e, i) => e === pairs[i]) || !mapping.range) {
     return [];
   }
@@ -65,5 +76,10 @@ export const orderIssue = (text: string, mapping: YAMLMap): Issue[] => {
 
   const affected = firstOrderingChange(pairs, sorted);
 
-  return affected ? [issueAt('docker-compose/key-order', 'Use the configured Docker Compose property order.', affected.key, edit)] : [];
+  if(!affected) {
+    return [];
+  }
+  const issue = issueAt('docker-compose/key-order', 'Use the configured Docker Compose property order.', affected.key, edit);
+
+  return [{ ...issue, end: issue.start + 1 }];
 };

@@ -57,14 +57,14 @@ export const volumeProblems = (value: string): ValueProblem[] => {
   return volumeMode(value, hasOptions, options);
 };
 
-export const longIssues = (text: string, entry: YAMLMap, field: string): Issue[] => {
-  if(blocked(entry)) {
+export const longIssues = (text: string, entry: YAMLMap, field: string, fields?: Map<string, unknown>): Issue[] => {
+  if(fields ? [...fields.values()].some(blocked) : blocked(entry)) {
     return [];
   }
   const specifications = field === 'volumes' ? [modeSpecification] : [hostSpecification, protocolSpecification];
 
   return specifications.flatMap(e => {
-    if(!entry.has(e.key)) {
+    if(!(fields ?? entry).has(e.key)) {
       const edit = addProperty(text, entry, e.key, e.value);
       const issue = issueAt(e.rule, `Specify ${e.key} explicitly.`, entry, edit);
       if(edit && e.key !== 'protocol') {
@@ -74,7 +74,7 @@ export const longIssues = (text: string, entry: YAMLMap, field: string): Issue[]
 
       return [issue];
     }
-    const value = entry.get(e.key, true);
+    const value = fields ? fields.get(e.key) : entry.get(e.key, true);
 
     return isScalar(value) && e.valid(value.value) ? [] : [issueAt(e.rule, `Invalid ${e.key}; choose a valid explicit value.`, value ?? entry)];
   });

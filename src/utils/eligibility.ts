@@ -10,6 +10,10 @@ export const fileKind = (relative: string): FileKind | undefined => {
     return 'package-json';
   }
 
+  if(/^Dockerfile(?:[.-].+)?$/u.test(name ?? '')) {
+    return 'dockerfile';
+  }
+
   return /^(?:docker-)?compose(?:[.-].+)?\.ya?ml$/u.test(name ?? '') ? 'docker-compose' : undefined;
 };
 export const eligibleKind = async (relative: string, readIgnore: (directory: string) => Promise<string> | string): Promise<FileKind | undefined> => {

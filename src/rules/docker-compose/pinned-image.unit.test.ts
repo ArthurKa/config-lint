@@ -1,5 +1,4 @@
 /* eslint-disable no-template-curly-in-string -- Compose variables are literal test data. */
-/* eslint-disable ts/no-unnecessary-condition -- Runtime assertions verify report-only behavior. */
 
 import assert from 'assert/strict';
 import { test } from 'node:test';
@@ -14,7 +13,7 @@ const issues = (body: string) => {
 };
 
 void test('pulled images require a tag or digest without providing an edit', () => {
-  for(const value of ['jonasal/nginx-certbot', 'nginx:latest', 'nginx:', '', 'localhost:5000/nginx', 'localhost:5000/nginx:latest', 'nginx@sha256:', 'nginx@:abc']) {
+  for(const [value, expected] of [['jonasal/nginx-certbot', 't'], ['nginx:latest', 'latest'], ['nginx:', ':'], ['', ''], ['localhost:5000/nginx', 'x'], ['localhost:5000/nginx:latest', 'latest'], ['nginx@sha256:', 'sha256:'], ['nginx@:abc', ':abc'], ['nginx@', '@']] as const) {
     const text = `image: ${JSON.stringify(value)}\n`;
     const result = issues(text);
     assert.equal(result.length, 1, value);
@@ -22,7 +21,7 @@ void test('pulled images require a tag or digest without providing an edit', () 
     assert.ok(issue);
     assert.equal(issue.rule, 'docker-compose/pinned-image');
     assert.equal(issue.edit, undefined);
-    assert.equal(text.slice(issue.start, issue.end), JSON.stringify(value));
+    assert.equal(text.slice(issue.start, issue.end), expected);
   }
 });
 

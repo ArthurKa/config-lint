@@ -8,8 +8,20 @@ import { scalarPaths } from '../../utils/docker-compose/quotes';
 import { quoteIssues } from './no-unnecessary-quotes';
 
 void test('no-unnecessary-quotes in isolation', () => {
-  const text = 'services:\n  app: &app\n    expose: ["3003"]\n';
-  assert.equal(quoteIssues(text, parseDocument(text), new Set())[0]?.edit?.replacement, '3003');
+  for(const quote of ['"', "'"]) {
+    const quoted = `${quote}3003${quote}`;
+    const text = `services:\n  app: &app\n    expose: [${quoted}]\n`;
+    const issues = quoteIssues(text, parseDocument(text), new Set());
+    assert.equal(issues.length, 1);
+    const issue = issues[0];
+    assert.ok(issue);
+    const start = text.indexOf(quoted);
+    assert.equal(issue.start, start);
+    assert.equal(issue.end, start + 1);
+    assert.equal(text.slice(issue.start, issue.end), quote);
+    assert.deepEqual(issue.edit, { start, end: start + quoted.length, replacement: '3003' });
+    assert.equal(fix(text, 'docker-compose'), text.replace(quoted, '3003'));
+  }
 });
 
 void test('merge inheritance preserves quote fixes at the definition', () => {

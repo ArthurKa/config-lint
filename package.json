@@ -2,7 +2,7 @@
   "name": "config-lint",
   "version": "1.0.0",
   "private": true,
-  "description": "Lint and fix package.json and Docker Compose files in the active editor.",
+  "description": "Lint and fix package.json, Docker Compose files, and Dockerfiles in the active editor.",
   "scripts": {
     "prune": "rm -rf node_modules && npm run prune:sub",
     "prune:sub": "rm -rf packages/*/node_modules",
@@ -27,6 +27,7 @@
     "@types/semver": "7.8.0",
     "@types/vscode": "1.96.0",
     "@vscode/vsce": "4.1.0",
+    "dockerfile-ast": "0.7.1",
     "esbuild": "0.28.2",
     "eslint": "10.6.0",
     "eslint-import-resolver-typescript": "3.10.1",

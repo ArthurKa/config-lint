@@ -1,8 +1,10 @@
 import type { FileKind, Issue } from '../types';
 import { dockerComposeIssues } from './docker-compose';
+import { dockerfileIssues } from './dockerfile';
 import { packageJsonIssues } from './package-json';
 
-export const analyze = (text: string, kind: FileKind): Issue[] => kind === 'package-json' ? packageJsonIssues(text) : dockerComposeIssues(text);
+const analyzers = { 'package-json': packageJsonIssues, 'docker-compose': dockerComposeIssues, dockerfile: dockerfileIssues };
+export const analyze = (text: string, kind: FileKind): Issue[] => analyzers[kind](text);
 export const fix = (text: string, kind: FileKind): string => {
   let result = text;
   const seen = new Set<string>();

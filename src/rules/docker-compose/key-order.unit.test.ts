@@ -9,5 +9,10 @@ void test('key-order in isolation', () => {
   if(!isMap(node)) {
     throw new Error('Expected mapping');
   }
-  assert.equal(orderIssue(text, node)[0]?.rule, 'docker-compose/key-order');
+  const issue = orderIssue(text, node)[0];
+  assert.ok(issue);
+  assert.equal(issue.rule, 'docker-compose/key-order');
+  assert.equal(issue.end - issue.start, 1);
+  assert.equal(text.slice(issue.start, issue.end), 'c');
+  assert.ok(issue.edit);
 });

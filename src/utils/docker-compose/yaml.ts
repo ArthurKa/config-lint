@@ -32,8 +32,8 @@ export const canonical = (value: unknown): unknown => {
 };
 export const equivalent = (before: string, after: string, version: '1.1' | '1.2'): boolean => {
   try {
-    const a = parseDocument(before, { version, uniqueKeys: true });
-    const b = parseDocument(after, { version, uniqueKeys: true });
+    const a = parseDocument(before, { version, uniqueKeys: true, merge: true });
+    const b = parseDocument(after, { version, uniqueKeys: true, merge: true });
 
     return a.errors.length === 0 && b.errors.length === 0 && JSON.stringify(canonical(a.toJS())) === JSON.stringify(canonical(b.toJS()));
   } catch {
@@ -67,20 +67,27 @@ export const issueAt = (rule: string, message: string, node: unknown, edit?: Edi
 
   return { rule, message, start: range?.[0] ?? 0, end: range?.[1] ?? 1, ...(edit === undefined ? {} : { edit }) };
 };
-export const missingValueRange = (issue: Issue, node: Scalar): Issue => {
-  if(!issue.edit || !node.range) {
+export const scalarIssueRange = (text: string, issue: Issue, node: Scalar): Issue => {
+  if(!node.range) {
     return issue;
   }
   const quoted = node.type === 'QUOTE_DOUBLE' || node.type === 'QUOTE_SINGLE';
-  if(issue.rule === 'docker-compose/explicit-volume-mode') {
+  if(issue.rule === 'docker-compose/explicit-volume-mode' && issue.edit) {
     const start = node.range[1] - Number(quoted);
 
     return { ...issue, start, end: start };
   }
   if(issue.rule === 'docker-compose/explicit-port-host') {
     const start = node.range[0] + Number(quoted);
+    const source = text.slice(start, node.range[1] - Number(quoted)).split('/')[0] ?? '';
+    const hostEnd = source.lastIndexOf(':', source.lastIndexOf(':') - 1);
 
-    return { ...issue, start, end: start };
+    return { ...issue, start, end: start + Math.max(1, hostEnd) };
+  }
+  if(issue.rule === 'docker-compose/explicit-port-protocol' && !String(node.value).includes('/')) {
+    const end = node.range[1] - Number(quoted);
+
+    return { ...issue, start: end - 1, end };
   }
 
   return issue;

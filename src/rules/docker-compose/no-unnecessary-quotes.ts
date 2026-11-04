@@ -1,4 +1,4 @@
-import { type Document, isAlias, isMap, isNode, isScalar, parseDocument, visit } from 'yaml';
+import { type Document, isAlias, isNode, isScalar, parseDocument, visit } from 'yaml';
 import type { Issue } from '../../types';
 import { equivalentDockerComposeScalar, scalarPaths } from '../../utils/docker-compose/quotes';
 import { equivalent, issueAt } from '../../utils/docker-compose/yaml';
@@ -12,7 +12,7 @@ export const quoteIssues = (text: string, document: Document, skipped: Set<unkno
     if(isAlias(node) || skipped.has(node)) {
       return visit.SKIP;
     }
-    if(isNode(node) && (node.tag !== undefined || (isMap(node) && node.has('<<')))) {
+    if(isNode(node) && node.tag !== undefined) {
       return visit.SKIP;
     }
     if(!isScalar(node) || typeof node.value !== 'string' || !node.range || dynamic(node.value) || !['QUOTE_DOUBLE', 'QUOTE_SINGLE'].includes(node.type ?? '') || /[\r\n]/u.test(node.value)) {
@@ -30,7 +30,7 @@ export const quoteIssues = (text: string, document: Document, skipped: Set<unkno
       && parseDocument(candidate).errors.length === 0
     );
     if(same || sameComposeValue) {
-      issues.push(issueAt('docker-compose/no-unnecessary-quotes', 'Remove unnecessary quotes.', node, edit));
+      issues.push({ ...issueAt('docker-compose/no-unnecessary-quotes', 'Remove unnecessary quotes.', node, edit), end: node.range[0] + 1 });
     }
 
     return undefined;
